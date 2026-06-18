@@ -8,21 +8,6 @@
     "scheme": "frontend",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000"
-      },
-      "edgeToEdgeEnabled": true
-    },
-    "web": {
-      "bundler": "metro",
-      "output": "single",
-      "favicon": "./assets/images/favicon.png"
-    },
     "plugins": [
       "expo-router",
       [
@@ -36,8 +21,35 @@
       ],
       "expo-font",
       "expo-audio",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "Live video chat needs your camera",
+          "microphonePermission": "Live video chat needs your microphone"
+        }
+      ]
     ],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Used for live video chat",
+        "NSMicrophoneUsageDescription": "Used for live audio chat"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#000"
+      },
+      "edgeToEdgeEnabled": true,
+      "permissions": ["CAMERA", "RECORD_AUDIO", "MODIFY_AUDIO_SETTINGS"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
+    },
     "experiments": {
       "typedRoutes": true
     }

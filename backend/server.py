@@ -18,7 +18,7 @@ from typing import List, Optional
 import httpx
 import jwt
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, APIRouter, HTTPException, Request, status
+from fastapi import Depends, FastAPI, APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
@@ -60,6 +60,14 @@ EMERGENT_AUTH_API = os.environ.get(
     "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
 )
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "")
+
+# Optional TURN server (STUN works for ~70% of NATs; TURN required for the rest).
+TURN_URL = os.environ.get("TURN_URL", "")
+TURN_USERNAME = os.environ.get("TURN_USERNAME", "")
+TURN_CREDENTIAL = os.environ.get("TURN_CREDENTIAL", "")
+
+# In-memory WebRTC signaling — pairs of clients keyed by session_id.
+signaling_sessions: dict[str, dict] = {}  # session_id -> {caller, callee, sockets: {uid: ws}, started_at}
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -602,28 +610,152 @@ async def translate(payload: TranslateIn, user: dict = Depends(current_user)):
 # ── Routes: video chat lobby (signaling-lite) ─────────────────────────────────
 @api.post("/video/start")
 async def video_start(payload: VideoStartIn, user: dict = Depends(current_user)):
-    """Match a user with another waiting peer or enqueue."""
+    """Match a user with another waiting peer or enqueue. Returns ICE config."""
     # cleanup stale (>60s)
     await queue_c.delete_many({"enqueued_at": {"$lt": now() - timedelta(seconds=60)}})
-    other = await queue_c.find_one_and_delete(
-        {"user_id": {"$ne": user["id"]}}
-    )
+    other = await queue_c.find_one_and_delete({"user_id": {"$ne": user["id"]}})
+    ice_servers: list[dict] = [{"urls": "stun:stun.l.google.com:19302"}]
+    if TURN_URL:
+        ice_servers.append({"urls": TURN_URL, "username": TURN_USERNAME, "credential": TURN_CREDENTIAL})
     if other:
         peer = await users_c.find_one({"id": other["user_id"]}, {"_id": 0, "hashed_password": 0})
         sid = str(uuid.uuid4())
-        return {"matched": True, "session_id": sid, "peer": public_user(peer) if peer else None}
+        # The arriving user is the "caller" (creates the offer); the waiting one is the "callee".
+        signaling_sessions[sid] = {
+            "caller": user["id"],
+            "callee": other["user_id"],
+            "sockets": {},
+            "started_at": now(),
+        }
+        return {
+            "matched": True,
+            "session_id": sid,
+            "role": "caller",
+            "peer": public_user(peer) if peer else None,
+            "ice_servers": ice_servers,
+        }
     await queue_c.update_one(
         {"user_id": user["id"]},
         {"$set": {"user_id": user["id"], "enqueued_at": now(), "filters": payload.model_dump()}},
         upsert=True,
     )
-    return {"matched": False, "session_id": None, "peer": None}
+    return {"matched": False, "session_id": None, "role": None, "peer": None, "ice_servers": ice_servers}
+
+
+@api.get("/video/session/{session_id}")
+async def video_session_info(session_id: str, user: dict = Depends(current_user)):
+    """Polled by the waiting (callee) user to discover when they have been matched."""
+    s = signaling_sessions.get(session_id)
+    if not s or user["id"] not in (s.get("caller"), s.get("callee")):
+        # Check if this user is the callee in any active session
+        for sid, sess in signaling_sessions.items():
+            if sess.get("callee") == user["id"] or sess.get("caller") == user["id"]:
+                peer_id = sess["caller"] if sess["callee"] == user["id"] else sess["callee"]
+                peer = await users_c.find_one({"id": peer_id}, {"_id": 0, "hashed_password": 0})
+                role = "callee" if sess["callee"] == user["id"] else "caller"
+                ice = [{"urls": "stun:stun.l.google.com:19302"}]
+                if TURN_URL:
+                    ice.append({"urls": TURN_URL, "username": TURN_USERNAME, "credential": TURN_CREDENTIAL})
+                return {"matched": True, "session_id": sid, "role": role, "peer": public_user(peer) if peer else None, "ice_servers": ice}
+        return {"matched": False}
+    peer_id = s["caller"] if s["callee"] == user["id"] else s["callee"]
+    peer = await users_c.find_one({"id": peer_id}, {"_id": 0, "hashed_password": 0})
+    role = "callee" if s["callee"] == user["id"] else "caller"
+    ice = [{"urls": "stun:stun.l.google.com:19302"}]
+    if TURN_URL:
+        ice.append({"urls": TURN_URL, "username": TURN_USERNAME, "credential": TURN_CREDENTIAL})
+    return {"matched": True, "session_id": session_id, "role": role, "peer": public_user(peer) if peer else None, "ice_servers": ice}
+
+
+@api.post("/video/poll")
+async def video_poll(user: dict = Depends(current_user)):
+    """Waiting user polls to see if a session has been created for them."""
+    for sid, sess in list(signaling_sessions.items()):
+        if user["id"] in (sess.get("caller"), sess.get("callee")):
+            peer_id = sess["caller"] if sess["callee"] == user["id"] else sess["callee"]
+            peer = await users_c.find_one({"id": peer_id}, {"_id": 0, "hashed_password": 0})
+            role = "callee" if sess["callee"] == user["id"] else "caller"
+            ice = [{"urls": "stun:stun.l.google.com:19302"}]
+            if TURN_URL:
+                ice.append({"urls": TURN_URL, "username": TURN_USERNAME, "credential": TURN_CREDENTIAL})
+            return {"matched": True, "session_id": sid, "role": role, "peer": public_user(peer) if peer else None, "ice_servers": ice}
+    return {"matched": False}
 
 
 @api.post("/video/end")
 async def video_end(payload: VideoEndIn, user: dict = Depends(current_user)):
     await queue_c.delete_one({"user_id": user["id"]})
+    sess = signaling_sessions.pop(payload.session_id, None)
+    # notify peer if connected
+    if sess:
+        for uid, ws in list(sess.get("sockets", {}).items()):
+            if uid != user["id"]:
+                try:
+                    await ws.send_json({"type": "peer-left"})
+                except Exception:
+                    pass
     return {"ok": True}
+
+
+# ── WebSocket signaling for WebRTC ────────────────────────────────────────────
+@app.websocket("/api/ws/signal")
+async def ws_signal(websocket: WebSocket, token: str = "", session_id: str = ""):
+    await websocket.accept()
+    # authenticate
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "access":
+            raise ValueError("bad token type")
+        uid = payload["sub"]
+    except Exception:
+        await websocket.send_json({"type": "error", "reason": "auth"})
+        await websocket.close()
+        return
+
+    sess = signaling_sessions.get(session_id)
+    if not sess or uid not in (sess.get("caller"), sess.get("callee")):
+        await websocket.send_json({"type": "error", "reason": "session"})
+        await websocket.close()
+        return
+
+    sess["sockets"][uid] = websocket
+    # notify both sides when both joined
+    other_id = sess["caller"] if sess["callee"] == uid else sess["callee"]
+    other_ws = sess["sockets"].get(other_id)
+    if other_ws:
+        try:
+            await other_ws.send_json({"type": "peer-joined"})
+            await websocket.send_json({"type": "peer-joined"})
+        except Exception:
+            pass
+    else:
+        await websocket.send_json({"type": "waiting"})
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+            mtype = data.get("type")
+            if mtype in ("offer", "answer", "ice"):
+                target_ws = sess["sockets"].get(other_id)
+                if target_ws:
+                    try:
+                        await target_ws.send_json(data)
+                    except Exception:
+                        pass
+            elif mtype == "bye":
+                break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        # cleanup
+        sess["sockets"].pop(uid, None)
+        if other_ws := sess["sockets"].get(other_id):
+            try:
+                await other_ws.send_json({"type": "peer-left"})
+            except Exception:
+                pass
+        if not sess["sockets"]:
+            signaling_sessions.pop(session_id, None)
 
 
 @api.post("/video/cancel")
