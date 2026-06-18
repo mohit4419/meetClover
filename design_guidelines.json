@@ -1,0 +1,279 @@
+{
+  "project_info": {
+    "name": "Flick - Gen Z Social Video Chat",
+    "type": "React Native Mobile App (Expo)",
+    "theme": "Light",
+    "archetype": "Pastel & Soft mixed with Neo-Brutalism (Gen Z Vibe)"
+  },
+  "design_principles": [
+    "Neo-Brutalist Contrast: Soft pastel backgrounds contrasted with hard 3px-4px black borders and solid drop shadows.",
+    "Safety First: AI moderation features and safety cues are prominent, high-contrast, and never hidden in menus.",
+    "Bold Typography: Huge, tight-tracked headings. Personality over neutrality.",
+    "Tactile Interactions: Buttons and cards physically depress when pressed (shadow shrinks, element moves down)."
+  ],
+  "colors": {
+    "background": {
+      "primary": "#FDFBF7",
+      "secondary": "#E0F2E9",
+      "tertiary": "#B1B2FF",
+      "overlay": "rgba(17, 17, 17, 0.4)"
+    },
+    "brand": {
+      "primary": "#FF90E8",
+      "accent_yellow": "#FFDE59",
+      "accent_blue": "#38BDF8"
+    },
+    "text": {
+      "primary": "#111111",
+      "secondary": "#4B5563",
+      "inverse": "#FDFBF7"
+    },
+    "status": {
+      "danger": "#FF5757",
+      "success": "#00C853",
+      "warning": "#FFDE59"
+    },
+    "border": {
+      "primary": "#111111"
+    }
+  },
+  "typography": {
+    "font_families": {
+      "heading": "Clash Display",
+      "body": "Manrope",
+      "fallback": "System"
+    },
+    "sizes": {
+      "h1": {
+        "fontSize": 40,
+        "lineHeight": 44,
+        "fontWeight": "900",
+        "letterSpacing": -1.5
+      },
+      "h2": {
+        "fontSize": 32,
+        "lineHeight": 36,
+        "fontWeight": "800",
+        "letterSpacing": -1
+      },
+      "h3": {
+        "fontSize": 24,
+        "lineHeight": 28,
+        "fontWeight": "700",
+        "letterSpacing": -0.5
+      },
+      "body_large": {
+        "fontSize": 18,
+        "lineHeight": 26,
+        "fontWeight": "600"
+      },
+      "body": {
+        "fontSize": 16,
+        "lineHeight": 24,
+        "fontWeight": "500"
+      },
+      "small": {
+        "fontSize": 14,
+        "lineHeight": 20,
+        "fontWeight": "700",
+        "textTransform": "uppercase",
+        "letterSpacing": 1.2
+      }
+    }
+  },
+  "spacing": {
+    "xs": 4,
+    "sm": 8,
+    "md": 16,
+    "lg": 24,
+    "xl": 32,
+    "xxl": 48
+  },
+  "components": {
+    "button": {
+      "primary": {
+        "backgroundColor": "#FF90E8",
+        "borderWidth": 3,
+        "borderColor": "#111111",
+        "borderRadius": 12,
+        "paddingVertical": 16,
+        "paddingHorizontal": 24,
+        "shadowColor": "#111111",
+        "shadowOffset": { "width": 4, "height": 4 },
+        "shadowOpacity": 1,
+        "shadowRadius": 0,
+        "alignItems": "center",
+        "justifyContent": "center"
+      },
+      "secondary": {
+        "backgroundColor": "#FDFBF7",
+        "borderWidth": 3,
+        "borderColor": "#111111",
+        "borderRadius": 12,
+        "paddingVertical": 16,
+        "paddingHorizontal": 24,
+        "shadowColor": "#111111",
+        "shadowOffset": { "width": 4, "height": 4 },
+        "shadowOpacity": 1,
+        "shadowRadius": 0
+      }
+    },
+    "card": {
+      "base": {
+        "backgroundColor": "#FFFFFF",
+        "borderWidth": 3,
+        "borderColor": "#111111",
+        "borderRadius": 16,
+        "padding": 16,
+        "shadowColor": "#111111",
+        "shadowOffset": { "width": 4, "height": 4 },
+        "shadowOpacity": 1,
+        "shadowRadius": 0
+      },
+      "polaroid": {
+        "backgroundColor": "#FDFBF7",
+        "borderWidth": 3,
+        "borderColor": "#111111",
+        "borderRadius": 16,
+        "padding": 12,
+        "paddingBottom": 48,
+        "shadowColor": "#111111",
+        "shadowOffset": { "width": 6, "height": 6 },
+        "shadowOpacity": 1,
+        "shadowRadius": 0
+      }
+    },
+    "input": {
+      "base": {
+        "backgroundColor": "#FFFFFF",
+        "borderWidth": 3,
+        "borderColor": "#111111",
+        "borderRadius": 12,
+        "padding": 16,
+        "fontSize": 16,
+        "fontFamily": "Manrope",
+        "color": "#111111"
+      }
+    },
+    "badge": {
+      "safety": {
+        "backgroundColor": "#FF5757",
+        "paddingVertical": 6,
+        "paddingHorizontal": 12,
+        "borderRadius": 20,
+        "borderWidth": 2,
+        "borderColor": "#111111"
+      },
+      "premium": {
+        "backgroundColor": "#FFDE59",
+        "paddingVertical": 6,
+        "paddingHorizontal": 12,
+        "borderRadius": 20,
+        "borderWidth": 2,
+        "borderColor": "#111111"
+      }
+    },
+    "bottom_tab": {
+      "backgroundColor": "#FDFBF7",
+      "borderTopWidth": 3,
+      "borderTopColor": "#111111",
+      "height": 80,
+      "paddingBottom": 20,
+      "paddingTop": 10
+    }
+  },
+  "screens": {
+    "splash_onboarding": {
+      "layout": "Full screen vibrant pastel background (#B1B2FF). Big bold typography in center. Neo-brutalist buttons at the bottom. Use absolute positioning for abstract shapes in corners.",
+      "components": ["button.primary", "button.secondary"]
+    },
+    "login_register": {
+      "layout": "Standard form but with neo-brutalist inputs. Label text must be bold and uppercase.",
+      "components": ["input.base", "button.primary"]
+    },
+    "home_swipe": {
+      "layout": "Tinder-style deck. Cards use the 'polaroid' style with a 3px border and thick shadow. Actions (Undo, Pass, Super Like, Like) are large circular buttons overlapping the bottom of the card.",
+      "special_rules": "Super Like triggers a full-screen #FFDE59 flash."
+    },
+    "match_screen": {
+      "layout": "Modal overlay. Bright #FF90E8 background. 'IT\\'S A VIBE' in giant 40px text. Two circular avatars overlapping with thick borders.",
+      "components": ["button.primary"]
+    },
+    "video_lobby": {
+      "layout": "Camera preview is full screen, but framed inside a 3px border container with rounded corners and 16px margins. Filter chips at the top.",
+      "components": ["badge.premium"]
+    },
+    "in_call": {
+      "layout": "Remote video is full screen. Local video is a draggable mini window with 3px border. AI Moderation Banner floats at the top: bright red with white text if flagged, else hidden. Subtitles (live translation) in a black semi-transparent box at the bottom.",
+      "features": ["Mute/Next/End floating action buttons (glassmorphism but with a solid 1px border)"]
+    },
+    "chat_list": {
+      "layout": "List items with 3px bottom border separators. Unread messages have a bright pink dot. Avatars are squares with rounded corners (borderRadius 12) and 2px borders."
+    },
+    "profile": {
+      "layout": "Scrollable view. Large header avatar. Trust Score badge prominent at the top right. Grid for interests (pill shaped, 2px borders, various pastel backgrounds).",
+      "components": ["badge.safety", "card.base"]
+    },
+    "discover": {
+      "layout": "Sticky horizontal scroll for filter chips at the top. Grid of 2 columns for user cards (polaroid style).",
+      "features": "Filter chips do not wrap, horizontal ScrollView with hidden scrollbar."
+    },
+    "subscription": {
+      "layout": "Carousel of 3 massive cards. Premium Plus card is larger, scaled to 1.05, and has a yellow #FFDE59 background. Highlight features with big checkmark icons.",
+      "components": ["card.base", "button.primary"]
+    },
+    "wallet_store": {
+      "layout": "Grid of coin packages. Each package is a card. Big coin icon. Neo-brutalist styling makes it look like physical arcade tokens."
+    },
+    "referral": {
+      "layout": "Centered illustration of friends, massive referral code text with a 'Copy' button.",
+      "components": ["card.base"]
+    },
+    "admin_lite": {
+      "layout": "Data-heavy but styled like a Gen-Z dashboard. High contrast, mono fonts for numbers, strict grid layout."
+    }
+  },
+  "testing": {
+    "attributes": "All interactive elements MUST use testID (React Native) mapped logically, e.g., testID='login-submit-button', testID='swipe-right-button'."
+  },
+  "media_urls": {
+    "onboarding": [
+      {
+        "url": "https://images.unsplash.com/photo-1600209142000-aa256622e64a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzF8MHwxfHNlYXJjaHwxfHxmcmllbmRzJTIwdGFraW5nJTIwc2VsZmllfGVufDB8fHx8MTc4MTc3MjE5OHww&ixlib=rb-4.1.0&q=85",
+        "description": "Friends taking a selfie, high energy, used for onboarding hero"
+      },
+      {
+        "url": "https://images.pexels.com/photos/8556342/pexels-photo-8556342.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Diverse group of friends enjoying a selfie, used for referral page hero"
+      }
+    ],
+    "profiles": [
+      {
+        "url": "https://images.unsplash.com/photo-1662850886700-4ec19bd30d11?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzl8MHwxfHNlYXJjaHwxfHx5b3VuZyUyMGFkdWx0JTIwc21pbGluZyUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTc3MjE4N3ww&ixlib=rb-4.1.0&q=85",
+        "description": "Young woman smiling, profile placeholder 1"
+      },
+      {
+        "url": "https://images.pexels.com/photos/6605420/pexels-photo-6605420.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Young man smiling warmly, profile placeholder 2"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1522529599102-193c0d76b5b6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzl8MHwxfHNlYXJjaHwzfHx5b3VuZyUyMGFkdWx0JTIwc21pbGluZyUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MTc3MjE4N3ww&ixlib=rb-4.1.0&q=85",
+        "description": "Man smiling during daytime, profile placeholder 3"
+      }
+    ],
+    "backgrounds": [
+      {
+        "url": "https://images.pexels.com/photos/7135027/pexels-photo-7135027.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Artistic abstract fluid background for premium upsell screen"
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Use StyleSheet in React Native to implement these specific neo-brutalist border and shadow rules. Do not rely on default shadow props (elevation on Android will look wrong; use solid views positioned behind elements to fake the hard shadow on Android).",
+    "For Typography, load 'Clash Display' and 'Manrope' via expo-font. If not immediately available, fall back to System font with bold weights.",
+    "Ensure the AI Moderation banner in the in-call screen has high z-index and uses the #FF5757 danger color for immediate visibility.",
+    "Implement the swipe deck using a library like react-native-deck-swiper or reanimated, but apply the 'card.polaroid' styles to the container.",
+    "For interactive buttons, wrap with Pressable and use useAnimatedStyle to translate the button down (e.g., transform: [{translateY: 4}]) and reduce shadow offset to 0 when pressed, simulating a physical button press.",
+    "All testID attributes MUST be applied to interactive components."
+  ]
+}
