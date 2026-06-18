@@ -1,9 +1,11 @@
 /**
- * Subscription — 3-tier upsell with mock upgrade.
+ * Subscription — 3-tier upsell. Real Stripe checkout for paid plans, mock for free.
  */
 
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
+import { Platform } from "react-native";
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -29,6 +31,11 @@ const PLANS = [
   },
 ];
 
+function currentOrigin(): string {
+  if (Platform.OS === "web" && typeof window !== "undefined") return window.location.origin;
+  return process.env.EXPO_PUBLIC_BACKEND_URL || "";
+}
+
 export default function Subscription() {
   const { user, updateUser } = useAuth();
   const router = useRouter();
@@ -36,15 +43,30 @@ export default function Subscription() {
   const [selected, setSelected] = useState<string>(user?.subscription_tier || "premium");
   const [busy, setBusy] = useState(false);
 
-  const subscribe = async (plan: string) => {
+  const proceed = async () => {
     setBusy(true);
     try {
-      const u = await api<User>("/subscription", { method: "POST", body: { plan } });
-      updateUser(u);
-      toast.show(plan === "free" ? "Downgraded to Free" : `Welcome to ${plan.replace("_", " ").toUpperCase()}!`, "success");
-      router.back();
+      if (selected === "free") {
+        const u = await api<User>("/subscription", { method: "POST", body: { plan: "free" } });
+        updateUser(u);
+        toast.show("Downgraded to Free", "info");
+        router.back();
+        return;
+      }
+      const origin = currentOrigin();
+      const r = await api<{ url: string; session_id: string }>("/payments/checkout", {
+        method: "POST",
+        body: { plan: selected, origin },
+      });
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        window.location.href = r.url;
+      } else {
+        await WebBrowser.openBrowserAsync(r.url);
+        // After in-app browser closes, send user to status check
+        router.replace({ pathname: "/payment/return", params: { session_id: r.session_id } });
+      }
     } catch (e: any) {
-      toast.show(e.message || "Failed", "danger");
+      toast.show(e.message || "Checkout failed", "danger");
     } finally {
       setBusy(false);
     }
@@ -57,7 +79,7 @@ export default function Subscription() {
           <Ionicons name="close" size={20} color={COLORS.text} />
         </Pressable>
         <Text style={styles.title}>UNLOCK{"\n"}EVERYTHING.</Text>
-        <Text style={styles.sub}>Cancel anytime. Demo — no charge.</Text>
+        <Text style={styles.sub}>Stripe TEST mode — card 4242 4242 4242 4242 any future date + any CVC.</Text>
 
         <View style={{ gap: SPACING.md, marginTop: SPACING.xl }}>
           {PLANS.map((p) => {
@@ -90,8 +112,8 @@ export default function Subscription() {
 
         <NeoButton
           testID="sub-confirm-btn"
-          label={busy ? "PROCESSING…" : `GET ${selected.replace("_", " ").toUpperCase()}`}
-          onPress={() => subscribe(selected)}
+          label={busy ? "PROCESSING…" : selected === "free" ? "SET TO FREE" : `CHECKOUT WITH STRIPE`}
+          onPress={proceed}
           disabled={busy}
           style={{ marginTop: SPACING.xl }}
           fullWidth
@@ -105,7 +127,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   closeBtn: { alignSelf: "flex-end", padding: 8, borderWidth: 2, borderColor: COLORS.border, borderRadius: 10, backgroundColor: COLORS.white, marginBottom: SPACING.md },
   title: { ...FONTS.h1, color: COLORS.text },
-  sub: { ...FONTS.bodyLg, color: COLORS.textSecondary, marginTop: 4 },
+  sub: { ...FONTS.body, color: COLORS.textSecondary, marginTop: 4 },
   plan: { borderWidth: 3, borderColor: COLORS.border, borderRadius: RADIUS.lg, padding: SPACING.lg },
   planHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   planName: { fontSize: 24, fontWeight: "900", color: COLORS.text, letterSpacing: -0.5 },

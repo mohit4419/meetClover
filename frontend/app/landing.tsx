@@ -7,6 +7,7 @@ import { StyleSheet, Text, View, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { NeoButton, Pill } from "@/src/components/ui";
+import { startEmergentGoogleSignIn } from "@/src/google-auth";
 import { COLORS, FONTS, RADIUS, SHADOW, SPACING } from "@/src/theme";
 
 export default function Landing() {
@@ -34,6 +35,7 @@ export default function Landing() {
 
       <View style={styles.actions}>
         <NeoButton testID="landing-get-started" label="GET STARTED →" onPress={() => router.push("/register")} fullWidth />
+        <NeoButton testID="landing-google-login" label="CONTINUE WITH GOOGLE" variant="yellow" onPress={() => startEmergentGoogleSignIn()} fullWidth />
         <NeoButton testID="landing-login" label="I HAVE AN ACCOUNT" variant="secondary" onPress={() => router.push("/login")} fullWidth />
       </View>
     </SafeAreaView>

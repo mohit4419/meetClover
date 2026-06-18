@@ -62,6 +62,7 @@ export default function Profile() {
 
         <Text style={styles.section}>MORE</Text>
         <View style={{ gap: SPACING.sm }}>
+          <Row testID="row-photos" icon="images" label="MANAGE PHOTOS" bg={COLORS.bgSecondary} onPress={() => router.push("/profile-photos")} />
           <Row testID="row-subscription" icon="diamond" label="SUBSCRIPTION" bg={COLORS.yellow} onPress={() => router.push("/subscription")} />
           <Row testID="row-wallet" icon="wallet" label="WALLET & GIFTS" bg={COLORS.pink} onPress={() => router.push("/wallet")} />
           <Row testID="row-referral" icon="gift" label="REFER FRIENDS" bg={COLORS.blue} onPress={() => router.push("/referral")} />

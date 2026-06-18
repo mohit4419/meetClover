@@ -32,6 +32,7 @@ type Ctx = {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
+  loginWithGoogleSession: (sessionId: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   updateUser: (u: User) => void;
@@ -79,13 +80,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(r.user);
   };
 
+  const loginWithGoogleSession = async (sessionId: string) => {
+    const r = await api<{ access_token: string; refresh_token: string; user: User }>(
+      "/auth/emergent/google",
+      { method: "POST", body: { session_id: sessionId }, auth: false },
+    );
+    await setTokens(r.access_token, r.refresh_token);
+    setUser(r.user);
+  };
+
   const logout = async () => {
     await clearTokens();
     setUser(null);
   };
 
   return (
-    <AuthCtx.Provider value={{ user, loading, login, register, logout, refresh, updateUser: setUser }}>
+    <AuthCtx.Provider value={{ user, loading, login, register, loginWithGoogleSession, logout, refresh, updateUser: setUser }}>
       {children}
     </AuthCtx.Provider>
   );

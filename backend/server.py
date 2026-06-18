@@ -15,9 +15,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
+import httpx
 import jwt
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, APIRouter, HTTPException, status
+from fastapi import Depends, FastAPI, APIRouter, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
@@ -28,6 +29,10 @@ import json
 import re
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
+from emergentintegrations.payments.stripe.checkout import (
+    CheckoutSessionRequest,
+    StripeCheckout,
+)
 
 
 ROOT_DIR = Path(__file__).parent
@@ -49,6 +54,12 @@ REFRESH_DAYS = int(os.environ.get("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
 ADMIN_EMAIL = os.environ["ADMIN_EMAIL"]
 ADMIN_PASSWORD = os.environ["ADMIN_PASSWORD"]
 EMERGENT_LLM_KEY = os.environ["EMERGENT_LLM_KEY"]
+STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "sk_test_emergent")
+EMERGENT_AUTH_API = os.environ.get(
+    "EMERGENT_AUTH_API",
+    "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
+)
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "")
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -58,6 +69,8 @@ matches_c = db.matches
 messages_c = db.messages
 queue_c = db.video_queue
 reports_c = db.reports
+payments_c = db.payments  # checkout session log
+reads_c = db.reads        # last-read pointer per (match_id, user_id)
 
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer = HTTPBearer(auto_error=False)
@@ -158,8 +171,28 @@ class SwipeIn(BaseModel):
 
 class ChatSendIn(BaseModel):
     match_id: str
-    text: str
+    text: Optional[str] = None
+    image_base64: Optional[str] = None  # data URI
+    voice_base64: Optional[str] = None  # data URI
+    voice_duration_ms: Optional[int] = None
     translate_to: Optional[str] = None
+
+
+class ChatReadIn(BaseModel):
+    match_id: str
+
+
+class PhotosUpdateIn(BaseModel):
+    photos: List[str]  # base64 data URIs or URLs, max 6
+
+
+class CheckoutIn(BaseModel):
+    plan: str  # premium | premium_plus
+    origin: Optional[str] = None  # absolute frontend origin
+
+
+class EmergentSessionIn(BaseModel):
+    session_id: str
 
 
 class ModerateIn(BaseModel):
@@ -462,12 +495,19 @@ async def list_matches(user: dict = Depends(current_user)):
         last_msg = await messages_c.find_one(
             {"match_id": m["id"]}, sort=[("created_at", -1)], projection={"_id": 0}
         )
+        my_read = await reads_c.find_one({"match_id": m["id"], "user_id": user["id"]})
+        last_read_at = my_read.get("last_read_at") if my_read else None
+        unread_q: dict = {"match_id": m["id"], "sender_id": {"$ne": user["id"]}}
+        if last_read_at:
+            unread_q["created_at"] = {"$gt": last_read_at}
+        unread = await messages_c.count_documents(unread_q)
         out.append(
             {
                 "id": m["id"],
                 "other_user": public_user(other) if other else None,
                 "last_message": last_msg,
                 "last_message_at": m.get("last_message_at"),
+                "unread": unread,
             }
         )
     return {"items": out}
@@ -487,22 +527,37 @@ async def chat_send(payload: ChatSendIn, user: dict = Depends(current_user)):
     m = await matches_c.find_one({"id": payload.match_id})
     if not m or user["id"] not in (m["user_a"], m["user_b"]):
         raise HTTPException(404, "Match not found")
-    moderation = await ai_moderate(payload.text)
-    if not moderation["allowed"]:
-        # Penalize trust score on high severity
-        if moderation.get("severity") == "high":
-            await users_c.update_one({"id": user["id"]}, {"$inc": {"trust_score": -5}})
-        return {"ok": False, "blocked": True, "moderation": moderation}
+
+    msg_type = "text"
+    if payload.image_base64:
+        msg_type = "image"
+    elif payload.voice_base64:
+        msg_type = "voice"
+
+    # Text moderation only for text and image-caption
+    moderation = {"allowed": True, "reason": "ok", "severity": "low"}
+    if msg_type == "text":
+        if not payload.text:
+            raise HTTPException(400, "Empty text")
+        moderation = await ai_moderate(payload.text)
+        if not moderation["allowed"]:
+            if moderation.get("severity") == "high":
+                await users_c.update_one({"id": user["id"]}, {"$inc": {"trust_score": -5}})
+            return {"ok": False, "blocked": True, "moderation": moderation}
 
     translated = None
-    if payload.translate_to:
+    if msg_type == "text" and payload.translate_to and payload.text:
         translated = await ai_translate(payload.text, payload.translate_to)
 
     msg = {
         "id": str(uuid.uuid4()),
         "match_id": payload.match_id,
         "sender_id": user["id"],
-        "text": payload.text,
+        "type": msg_type,
+        "text": payload.text or "",
+        "image_base64": payload.image_base64,
+        "voice_base64": payload.voice_base64,
+        "voice_duration_ms": payload.voice_duration_ms,
         "translated": translated,
         "created_at": now(),
     }
@@ -510,6 +565,27 @@ async def chat_send(payload: ChatSendIn, user: dict = Depends(current_user)):
     await matches_c.update_one({"id": payload.match_id}, {"$set": {"last_message_at": now()}})
     msg.pop("_id", None)
     return {"ok": True, "message": msg, "moderation": moderation}
+
+
+@api.post("/chat/read")
+async def chat_read(payload: ChatReadIn, user: dict = Depends(current_user)):
+    m = await matches_c.find_one({"id": payload.match_id})
+    if not m or user["id"] not in (m["user_a"], m["user_b"]):
+        raise HTTPException(404, "Match not found")
+    await reads_c.update_one(
+        {"match_id": payload.match_id, "user_id": user["id"]},
+        {"$set": {"match_id": payload.match_id, "user_id": user["id"], "last_read_at": now()}},
+        upsert=True,
+    )
+    return {"ok": True}
+
+
+@api.put("/profile/photos")
+async def update_photos(payload: PhotosUpdateIn, user: dict = Depends(current_user)):
+    photos = [p for p in payload.photos if p][:6]
+    await users_c.update_one({"id": user["id"]}, {"$set": {"photos": photos}})
+    u = await users_c.find_one({"id": user["id"]})
+    return public_user(u)
 
 
 # ── Routes: AI ────────────────────────────────────────────────────────────────
@@ -610,6 +686,168 @@ async def admin_stats(user: dict = Depends(current_user)):
         "reports": await reports_c.count_documents({}),
         "premium_users": await users_c.count_documents({"subscription_tier": {"$ne": "free"}}),
     }
+
+
+# ── Routes: payments (Stripe via emergentintegrations) ───────────────────────
+PLAN_AMOUNTS = {"premium": 9.99, "premium_plus": 19.99}
+
+
+def _stripe() -> StripeCheckout:
+    host_url = PUBLIC_BASE_URL or ""
+    webhook_url = f"{host_url}/api/webhook/stripe" if host_url else None
+    return StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=webhook_url)
+
+
+@api.post("/payments/checkout")
+async def payments_checkout(payload: CheckoutIn, user: dict = Depends(current_user)):
+    if payload.plan not in PLAN_AMOUNTS:
+        raise HTTPException(400, "Bad plan")
+    amount = PLAN_AMOUNTS[payload.plan]
+    origin = (payload.origin or PUBLIC_BASE_URL or "").rstrip("/")
+    if not origin:
+        raise HTTPException(400, "Missing origin")
+    success_url = f"{origin}/payment/return?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{origin}/subscription"
+    req = CheckoutSessionRequest(
+        amount=amount,
+        currency="usd",
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata={"user_id": user["id"], "plan": payload.plan},
+    )
+    try:
+        resp = await _stripe().create_checkout_session(req)
+    except Exception as e:
+        logger.exception("stripe checkout failed")
+        raise HTTPException(502, f"Stripe error: {e}")
+    await payments_c.insert_one(
+        {
+            "session_id": resp.session_id,
+            "user_id": user["id"],
+            "plan": payload.plan,
+            "amount": amount,
+            "currency": "usd",
+            "status": "pending",
+            "payment_status": "unpaid",
+            "created_at": now(),
+        }
+    )
+    return {"url": resp.url, "session_id": resp.session_id}
+
+
+@api.get("/payments/status/{session_id}")
+async def payments_status(session_id: str, user: dict = Depends(current_user)):
+    record = await payments_c.find_one({"session_id": session_id}, {"_id": 0})
+    if not record or record["user_id"] != user["id"]:
+        raise HTTPException(404, "Session not found")
+    if record["status"] == "complete" and record["payment_status"] == "paid":
+        return record
+    try:
+        status_resp = await _stripe().get_checkout_status(session_id)
+    except Exception as e:
+        logger.exception("stripe status failed")
+        raise HTTPException(502, f"Stripe error: {e}")
+    payment_status = status_resp.payment_status
+    session_status = status_resp.status
+    update = {"status": session_status, "payment_status": payment_status}
+    if payment_status == "paid" and record["payment_status"] != "paid":
+        update["paid_at"] = now()
+        await users_c.update_one(
+            {"id": user["id"]},
+            {"$set": {"subscription_tier": record["plan"], "verified": True}},
+        )
+    await payments_c.update_one({"session_id": session_id}, {"$set": update})
+    record.update(update)
+    return record
+
+
+@api.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    signature = request.headers.get("Stripe-Signature")
+    try:
+        event = await _stripe().handle_webhook(payload, signature)
+    except Exception as e:
+        logger.exception("stripe webhook failed")
+        raise HTTPException(400, f"Webhook error: {e}")
+    if event.event_type == "checkout.session.completed" and event.payment_status == "paid":
+        uid = (event.metadata or {}).get("user_id")
+        plan = (event.metadata or {}).get("plan")
+        if uid and plan in PLAN_AMOUNTS:
+            await users_c.update_one(
+                {"id": uid},
+                {"$set": {"subscription_tier": plan, "verified": True}},
+            )
+            await payments_c.update_one(
+                {"session_id": event.session_id},
+                {"$set": {"status": "complete", "payment_status": "paid", "paid_at": now()}},
+            )
+    return {"received": True}
+
+
+# ── Routes: Emergent Google Auth ─────────────────────────────────────────────
+@api.post("/auth/emergent/google", response_model=TokenOut)
+async def emergent_google_login(payload: EmergentSessionIn):
+    try:
+        async with httpx.AsyncClient(timeout=15) as client_http:
+            r = await client_http.get(
+                EMERGENT_AUTH_API, headers={"X-Session-ID": payload.session_id}
+            )
+        if r.status_code != 200:
+            raise HTTPException(401, f"Emergent rejected session: {r.text[:200]}")
+        data = r.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("emergent oauth fetch failed")
+        raise HTTPException(502, f"Emergent error: {e}")
+
+    email = (data.get("email") or "").lower().strip()
+    if not email:
+        raise HTTPException(401, "No email on session")
+    name = data.get("name") or email.split("@")[0]
+    picture = data.get("picture") or ""
+
+    existing = await users_c.find_one({"email": email})
+    if existing:
+        await users_c.update_one(
+            {"id": existing["id"]},
+            {
+                "$set": {
+                    "display_name": existing.get("display_name") or name,
+                    "photos": existing.get("photos") or ([picture] if picture else []),
+                    "verified": True,
+                }
+            },
+        )
+        u = await users_c.find_one({"id": existing["id"]})
+    else:
+        uid = str(uuid.uuid4())
+        u = {
+            "id": uid,
+            "email": email,
+            "display_name": name,
+            "hashed_password": hash_pw(uuid.uuid4().hex),  # unusable; Google-only
+            "is_admin": False,
+            "subscription_tier": "free",
+            "trust_score": 80,
+            "verified": True,
+            "coins": 50,
+            "photos": [picture] if picture else [],
+            "interests": [],
+            "languages": ["en"],
+            "preferred_language": "en",
+            "referral_code": uid[:6].upper(),
+            "auth_provider": "google",
+            "created_at": now(),
+        }
+        await users_c.insert_one(u)
+
+    return TokenOut(
+        access_token=make_token(u["id"], "access"),
+        refresh_token=make_token(u["id"], "refresh"),
+        user=public_user(u),
+    )
 
 
 # ── Seed ──────────────────────────────────────────────────────────────────────

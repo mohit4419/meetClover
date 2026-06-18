@@ -1,0 +1,51 @@
+{
+  "summary": "Iteration 2 testing complete. Backend 37/37 pytest (27 regression + 10 new) PASSED against public preview URL. New endpoints all green: POST /api/payments/checkout (returns real Stripe checkout URL + session_id), 400 on plan='free', GET /api/payments/status/{sid} returns 404 to non-owner and 200 to owner, POST /api/auth/emergent/google returns 401/502 on bad session (never 500) and 422 on empty payload, PUT /api/profile/photos saves and clips to 6, /api/chat/send accepts text/image/voice (image+voice skip moderation), /api/chat/read resets unread, GET /api/matches returns integer unread that increments and resets correctly. Frontend (mobile-web 390x844, ava@flick.app): landing + login both show CONTINUE WITH GOOGLE, login works, /subscription -> click PREMIUM -> CHECKOUT WITH STRIPE triggered POST /api/payments/checkout (200) and browser redirected to a real Stripe Checkout URL (checkout.stripe.com/c/pay/cs_test_...). /profile-photos page renders ADD BY URL input + SAVE which fired PUT /api/profile/photos (200). /(tabs)/chats shows all four chips (ALL / UNREAD / VERIFIED / NEW MATCH) and they are clickable; counter label updates to '0 in new' after selecting NEW MATCH filter. No React Native red screens or page errors. Deprecated packages detected: none new (iteration 1 already flagged none). React-Native web warnings observed: 'shadow*' style props and 'props.pointerEvents' deprecation, plus a GO_BACK navigator warning on deep-link to /profile-photos.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/payments/status/{sid}", "issue": "Returns 404 for both 'session does not exist' AND 'session belongs to another user'. Consider returning 403 for the latter so clients can distinguish; not user-facing today."},
+      {"endpoint": "startup", "issue": "Passlib bcrypt '__about__' warning still logged on first hash (carried over from iteration 1). Functionality OK."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "profile-photos.tsx", "issue": "Navigating directly to /profile-photos and pressing the back action (or after SAVE if it tries to router.back()) logs 'The action GO_BACK was not handled by any navigator' because there is no history when deep-linked. Use router.replace('/profile') or check router.canGoBack() before going back.", "testID": "n/a", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "global", "issues": ["RN-Web deprecation warnings: 'shadow*' style props should be migrated to boxShadow, and props.pointerEvents should move to style.pointerEvents. Not breaking but spams the console."]}
+    ],
+    "react_native_issues": [
+      {"component": "Animated", "issue": "Console warning: 'useNativeDriver is not supported because the native animated module is missing. Falling back to JS-based animation.' on /profile-photos. Expected on web, but consider Platform.OS check to set useNativeDriver: Platform.OS !== 'web' to silence."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_flick_api.py",
+    "/app/backend/tests/test_flick_v2.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Differentiate 403 vs 404 in /api/payments/status/{sid} when the caller is not the owner.",
+    "(Optional) On /profile-photos, replace router.back() with router.replace('/profile') (or guard with router.canGoBack()) so deep links don't log the GO_BACK warning.",
+    "(Optional) Silence RN-Web deprecation warnings: migrate shadow* -> boxShadow and pointerEvents prop -> style.pointerEvents; pass useNativeDriver based on Platform.OS.",
+    "(Carryover) Quiet passlib/bcrypt startup warning by pinning bcrypt<4 or upgrading passlib."
+  ],
+  "critical_code_review_comments": [
+    "server.py:702 — payments_checkout calls _stripe().create_checkout_session inside try/except; on failure returns 502 with detail — good.",
+    "server.py:739 — payments_status returns 404 when record exists but belongs to another user; this masks the case. Acceptable for privacy but worth noting.",
+    "server.py:526 — chat_send correctly tags type as image/voice and bypasses moderation only for non-text; text path still moderates. Image base64 is stored inline in MongoDB — acceptable for MVP but consider object storage for scale.",
+    "server.py:790 — emergent_google_login wraps httpx call; non-200 -> 401, network/parse error -> 502, validation -> 422. Never 500, confirmed by test.",
+    "server.py:485 — list_matches computes unread via reads_c last_read_at pointer; query uses created_at > last_read_at — correct.",
+    "server.py:583 — update_photos clips to 6 and filters falsy entries — correct."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_flick_v2.py"
+  ],
+  "success_rate": {"backend": "100% (37/37)", "frontend": "100% on iteration-2 flows verified (Stripe redirect, photos save, chat filter chips, Google button visible)"},
+  "seed_data_creation": "Ephemeral TEST_*@flick.app users created via /api/auth/register for iteration-2 tests (payments/photos/chat). Ava's photos were overwritten in the frontend run with a single Unsplash URL — restore from seed if needed: ava@flick.app -> initial single photo from DEMO_PHOTOS[0].",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend base URL = EXPO_PUBLIC_BACKEND_URL in /app/frontend/.env. Pytest: `cd /app && pytest backend/tests/ -v --junitxml=/app/test_reports/pytest/pytest_results.xml`. Login button label is 'LOG IN' (with space), NOT 'LOGIN'. The Stripe checkout flow goes through emergentintegrations and actually redirects to checkout.stripe.com (cs_test_*) in TEST mode — the resulting payment_status stays 'unpaid' until a real card is entered, so /payments/status will report unpaid; do not assert paid status without webhook traffic. Emergent Google session exchange cannot be exercised end-to-end without a real session_id; only verify endpoint exists and returns 401/502/422 on bad input. Ava's photos may have been overwritten by the manual frontend test — re-seed if discover/profile snapshots are affected.",
+  "rca_of_issue": "N/A — no blocking bugs found in iteration 2 testing."
+}

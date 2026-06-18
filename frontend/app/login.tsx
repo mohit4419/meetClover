@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/src/auth";
 import { NeoButton, NeoInput } from "@/src/components/ui";
 import { useToast } from "@/src/components/toast";
+import { startEmergentGoogleSignIn } from "@/src/google-auth";
 import { COLORS, FONTS, SPACING } from "@/src/theme";
 
 export default function Login() {
@@ -43,6 +44,7 @@ export default function Login() {
 
           <View style={{ gap: SPACING.md, marginTop: SPACING.xl }}>
             <NeoButton testID="login-submit-button" label={busy ? "LOGGING IN…" : "LOG IN"} onPress={onLogin} disabled={busy} fullWidth />
+            <NeoButton testID="login-google-btn" label="CONTINUE WITH GOOGLE" variant="yellow" onPress={() => startEmergentGoogleSignIn()} fullWidth />
             <Link href="/register" asChild>
               <NeoButton testID="login-go-register" label="CREATE ACCOUNT" variant="secondary" fullWidth />
             </Link>
