@@ -4,7 +4,7 @@
 
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -29,10 +29,13 @@ const GIFTS = [
 ];
 
 export default function Wallet() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, refresh } = useAuth();
   const router = useRouter();
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
+
+  // ensure latest balance on screen mount
+  useEffect(() => { refresh(); }, [refresh]);
 
   const buy = async (pack: string) => {
     setBusy(pack);
