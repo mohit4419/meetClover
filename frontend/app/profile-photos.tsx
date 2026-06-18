@@ -76,7 +76,8 @@ export default function ProfilePhotos() {
       const u = await api<User>("/profile/photos", { method: "PUT", body: { photos } });
       updateUser(u);
       toast.show("Photos saved!", "success");
-      router.back();
+      if (router.canGoBack()) router.back();
+      else router.replace("/(tabs)/profile");
     } catch (e: any) {
       toast.show(e.message || "Failed", "danger");
     } finally {
@@ -88,7 +89,7 @@ export default function ProfilePhotos() {
     <SafeAreaView style={styles.root} edges={["top", "bottom"]} testID="photos-screen">
       <ScrollView contentContainerStyle={{ padding: SPACING.lg }}>
         <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} testID="photos-back" style={styles.iconBtn}><Ionicons name="arrow-back" size={20} color={COLORS.text} /></Pressable>
+          <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/profile"))} testID="photos-back" style={styles.iconBtn}><Ionicons name="arrow-back" size={20} color={COLORS.text} /></Pressable>
           <Text style={styles.title}>PHOTOS</Text>
         </View>
 
