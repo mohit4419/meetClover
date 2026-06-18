@@ -1,30 +1,29 @@
-import { Text, View, StyleSheet, Image } from "react-native";
+/**
+ * Entry — redirects depending on auth state.
+ */
 
-const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+import { Redirect } from "expo-router";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
+
+import { useAuth } from "@/src/auth";
+import { COLORS } from "@/src/theme";
 
 export default function Index() {
-  console.log(EXPO_PUBLIC_BACKEND_URL, "EXPO_PUBLIC_BACKEND_URL");
-
-  return (
-    <View style={styles.container}>
-      <Image
-        source={require("../assets/images/app-image.png")}
-        style={styles.image}
-      />
-    </View>
-  );
+  const { user, loading } = useAuth();
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color={COLORS.pink} size="large" />
+      </View>
+    );
+  }
+  if (!user) return <Redirect href="/landing" />;
+  if (!user.gender || !user.country || (user.interests?.length || 0) < 1) {
+    return <Redirect href="/onboarding" />;
+  }
+  return <Redirect href="/(tabs)/swipe" />;
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#0c0c0c",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  image: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "contain",
-  },
+  center: { flex: 1, backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center" },
 });

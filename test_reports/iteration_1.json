@@ -1,0 +1,46 @@
+{
+  "summary": "First test pass for Flick (Tinder + random video chat + chat) Expo/FastAPI/MongoDB app. Backend: 27/27 pytest cases passed against the public preview URL covering auth, profile, discover/swipe, mutual match, chat with AI moderation+translate, AI endpoints, video lobby matchmaking, subscription/wallet, report, and admin stats (incl. RBAC). No `_id` leakage observed. Frontend (mobile-web 390x844): landing -> login(ava@flick.app) -> /swipe deck renders, LIKE/PASS buttons fire and load next card, CHATS tab renders, /profile shows Ava (50 coins, 2 interests/langs), subscription flow selects 'premium' and confirm returns to profile, wallet 'small' pack purchase updates balance 50 -> 150. Register-> /onboarding correctly gates SAVE on required fields. No React Native red screens or page errors detected. Deprecated packages detected: none in scanned screens.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/discover", "issue": "Admin user appears in non-admin discover deck (e.g. shown to ava@flick.app). Consider excluding is_admin=true accounts from discovery."},
+      {"endpoint": "startup", "issue": "Passlib bcrypt backend logs 'AttributeError: module bcrypt has no attribute __about__' on first hash. Functionality OK but noisy; pin bcrypt<4 or upgrade passlib."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "wallet.tsx", "issue": "On deep navigation (page reload) to /wallet, `wallet-balance` initially shows 0 instead of the persisted user's coins because auth context isn't hydrated before first paint. After any successful purchase the value reconciles. Add a loading/hydration guard or fetch /auth/me on mount.", "testID": "wallet-balance", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "swipe", "issues": ["Bottom tab labels (SWIPE/DISCOVER/LIVE/CHATS/ME) are uppercase but small; touch areas appear ≥44px via icon+label so OK."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_flick_api.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Optional: filter out is_admin users from GET /api/discover.",
+    "Hydrate auth user on /wallet (and other deep-linked screens) before first render so balance/profile values aren't briefly 0.",
+    "Quiet the passlib/bcrypt startup warning by pinning bcrypt<4 (or upgrading passlib) — purely cosmetic."
+  ],
+  "critical_code_review_comments": [
+    "server.py: `test_swipe_and_mutual_match` style logic is correct; mutual like only triggers when reverse swipe has action in (like, super). Looks good.",
+    "server.py: discovery sort is in-memory after `.limit(limit)`, so the top results returned are not guaranteed to be the best-overlap users globally — acceptable for MVP but flag for scale.",
+    "server.py: ai_moderate/ai_translate fall back to allow/passthrough on exception; ensure logs surface this in production.",
+    "server.py: Every endpoint already excludes `_id` (verified in pytest by asserting absent in payloads)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/test_flick_api.py"
+  ],
+  "success_rate": {"backend": "100% (27/27)", "frontend": "~95% (all primary flows verified, one minor hydration glitch on /wallet)"},
+  "seed_data_creation": "Tests created ephemeral users prefixed TEST_ via /api/auth/register; they remain in the DB but do not interfere with demo users (ava/liam/etc.). No demo data was mutated except for Ava's bio (set to TEST_bio_<rand>) and trust scores of fresh TEST_ accounts.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend base URL comes from /app/frontend/.env EXPO_PUBLIC_BACKEND_URL. Pytest entry: `cd /app && pytest backend/tests/test_flick_api.py -v`. Demo accounts: see /app/memory/test_credentials.md. Bottom tab label for profile screen is `ME` (not PROFILE/YOU); on web preview, clicking the text directly may miss the touchable area — prefer deep navigation via `/profile`, `/wallet`, `/subscription` or use the tab Pressable. Frontend uses Expo Router; tabs under /(tabs)/ are mounted at root paths (/swipe, /discover, /video, /chats, /profile).",
+  "rca_of_issue": "Wallet '0' before purchase: user prop from `useAuth()` is undefined on first render when navigating to /wallet via full page reload because auth bootstrap reads tokens from AsyncStorage asynchronously. Profile screen has the same provider but renders after the user object is populated. Fix: gate wallet render until `user` is loaded, or call /auth/me on mount."
+}
